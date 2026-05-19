@@ -1,134 +1,106 @@
 // =============================================
-// tile.js — 특수 타일 3종 관리
-//   - 타일 스폰 (15~30초 랜덤)
-//   - 타일 그리기
-//   - 플레이어 밟으면 효과 발동
+// tile.js — 랜덤 박스 3종 관리
+//   처음부터 맵에 배치된 상태로 시작
+//   종류: 약(medicine), 피(blood), 에너지드링크(energy)
 // =============================================
 
-// 활성 특수 타일 목록
-// { r, c, type, spawnFrame, blinkPhase }
-let specialTiles = [];
-let nextSpawnFrame = 0;
+let boxes = []; // { r, c, type }
 
 function initTiles(p) {
-  specialTiles = [];
-  scheduleNextSpawn(p);
+  boxes = [];
+  _placeBoxes(p);
 }
 
-function scheduleNextSpawn(p) {
-  const interval = Math.floor(
-    p.random(SPECIAL_TILE_INTERVAL_MIN, SPECIAL_TILE_INTERVAL_MAX)
-  );
-  nextSpawnFrame = p.frameCount + interval;
-}
+function _placeBoxes(p) {
+  const types = [BOX_TYPE_MEDICINE, BOX_TYPE_BLOOD, BOX_TYPE_ENERGY];
+  const midR = Math.floor(ROWS / 2);
+  const midC = Math.floor(COLS / 2);
 
-function updateTiles(p) {
-  if (specialTiles.length < MAX_SPECIAL_TILES && p.frameCount >= nextSpawnFrame) {
-    spawnSpecialTile(p);
-    scheduleNextSpawn(p);
+  for (const type of types) {
+    let placed = 0;
+    let attempts = 0;
+    while (placed < BOX_COUNT_EACH && attempts < 300) {
+      attempts++;
+      const r = Math.floor(p.random(4, ROWS - 4));
+      const c = Math.floor(p.random(4, COLS - 4));
+      // 시작 영역(중앙) 근처 제외
+      if (Math.abs(r - midR) < 6 && Math.abs(c - midC) < 8) continue;
+      // 이미 박스 있으면 스킵
+      if (boxes.some(b => b.r === r && b.c === c)) continue;
+      boxes.push({ r, c, type });
+      placed++;
+    }
   }
 }
 
-// 타입 가중치: bomb 40%, zombie_spawn 35%, boost_steel 25%
-const TILE_TYPES_WEIGHTED = [
-  TILE_TYPE_BOMB,
-  TILE_TYPE_BOMB,
-  TILE_TYPE_ZOMBIE_SPAWN,
-  TILE_TYPE_ZOMBIE_SPAWN,
-  TILE_TYPE_BOOST_STEEL,
-];
-
-function spawnSpecialTile(p) {
-  // 빈 타일에서 랜덤 위치 선정 (플레이어 근처 제외 — 최소 5타일 거리)
-  let attempts = 0;
-  while (attempts < 100) {
-    const r = Math.floor(p.random(2, ROWS - 2));
-    const c = Math.floor(p.random(2, COLS - 2));
-    // 이미 특수 타일 있으면 스킵
-    if (specialTiles.some(t => t.r === r && t.c === c)) { attempts++; continue; }
-    // 타입 선택
-    const type = TILE_TYPES_WEIGHTED[Math.floor(p.random(TILE_TYPES_WEIGHTED.length))];
-    specialTiles.push({ r, c, type, spawnFrame: p.frameCount, blinkPhase: 0 });
-    return;
-  }
-}
+// updateTiles은 이제 아무것도 하지 않음 (박스는 처음부터 고정 배치)
+function updateTiles(p) {}
 
 function drawTiles(p) {
-  for (const tile of specialTiles) {
-    const x = tile.c * TILE_SIZE;
-    const y = tile.r * TILE_SIZE;
-    const blink = Math.sin(p.frameCount * 0.15) > 0;
+  for (const box of boxes) {
+    const x = box.c * TILE_SIZE;
+    const y = box.r * TILE_SIZE;
+    const blink = Math.sin(p.frameCount * 0.12) > 0;
 
-    // 배경
     p.noStroke();
-    switch (tile.type) {
-      case TILE_TYPE_BOMB:
-        p.fill(blink ? '#FF6F00' : '#E65100');
-        break;
-      case TILE_TYPE_ZOMBIE_SPAWN:
-        p.fill(blink ? '#6A1B9A' : '#4A148C');
-        break;
-      case TILE_TYPE_BOOST_STEEL:
-        p.fill(blink ? '#00838F' : '#006064');
-        break;
+    // 박스 배경
+    switch (box.type) {
+      case BOX_TYPE_MEDICINE:
+        p.fill(blink ? '#43A047' : '#2E7D32'); break;
+      case BOX_TYPE_BLOOD:
+        p.fill(blink ? '#E53935' : '#B71C1C'); break;
+      case BOX_TYPE_ENERGY:
+        p.fill(blink ? '#FFD600' : '#F9A825'); break;
     }
-    p.rect(x, y, TILE_SIZE, TILE_SIZE, 3);
+    p.rect(x + 1, y + 1, TILE_SIZE - 2, TILE_SIZE - 2, 4);
 
-    // 아이콘 텍스트
+    // 아이콘
     p.textAlign(p.CENTER, p.CENTER);
-    p.textSize(12);
-    p.noStroke();
+    p.textSize(11);
     p.fill(255);
     let icon = '';
-    switch (tile.type) {
-      case TILE_TYPE_BOMB:         icon = '💣'; break;
-      case TILE_TYPE_ZOMBIE_SPAWN: icon = '🧟'; break;
-      case TILE_TYPE_BOOST_STEEL:  icon = '⚡'; break;
+    switch (box.type) {
+      case BOX_TYPE_MEDICINE: icon = '💊'; break;
+      case BOX_TYPE_BLOOD:    icon = '🩸'; break;
+      case BOX_TYPE_ENERGY:   icon = '⚡'; break;
     }
     p.text(icon, x + TILE_SIZE / 2, y + TILE_SIZE / 2 + 1);
   }
 }
 
-// 플레이어가 특수 타일 밟았는지 확인 → 효과 적용 후 타일 제거
-// player: Player 객체, zombies: Zombie 배열, phase: 현재 게임 페이즈
-function checkTilePickup(player, zombies, phase, p) {
-  for (let i = specialTiles.length - 1; i >= 0; i--) {
-    const tile = specialTiles[i];
-    if (tile.r === player.r && tile.c === player.c) {
-      applyTileEffect(tile, player, zombies, phase, p);
-      specialTiles.splice(i, 1);
+// 플레이어가 박스 밟았는지 확인
+function checkTilePickup(player, zombiesArr, phase, p) {
+  for (let i = boxes.length - 1; i >= 0; i--) {
+    const box = boxes[i];
+    if (box.r === player.r && box.c === player.c) {
+      _applyBoxEffect(box, player, phase, p);
+      boxes.splice(i, 1);
     }
   }
 }
 
-function applyTileEffect(tile, player, zombies, phase, p) {
-  switch (tile.type) {
-    case TILE_TYPE_BOMB:
-      // 영역 폭탄: 현재 위치 반경 BOMB_RADIUS 내 빈 타일 → 내 영역
+function _applyBoxEffect(box, player, phase, p) {
+  switch (box.type) {
+    case BOX_TYPE_MEDICINE: {
+      // 약: 주변 반경 BOMB_RADIUS 빈 타일 → 내 영역 보너스
       const owner = phase === PHASE_COOP ? OWNER_TEAM : player.owner;
       applyAreaBomb(player.r, player.c, owner);
-      // 시각 효과 플래그 (ui.js에서 처리)
-      player.bombFlash = 20; // 20프레임 플래시
+      player.bombFlash = 20;
+      showNotification(player.id, '약 획득: 보너스 땅이 주어지는 약을 먹었다!', '#43A047');
       break;
-
-    case TILE_TYPE_ZOMBIE_SPAWN:
-      // 좀비 3마리 소환 (밟은 플레이어 근처)
-      for (let i = 0; i < 3; i++) {
-        const spawnR = Math.min(ROWS - 1, Math.max(0, tile.r + Math.floor(p.random(-4, 5))));
-        const spawnC = Math.min(COLS - 1, Math.max(0, tile.c + Math.floor(p.random(-4, 5))));
-        zombies.push(new Zombie(spawnR, spawnC));
-      }
+    }
+    case BOX_TYPE_BLOOD: {
+      // 피: 좀비 속도 5초 증가
+      zombieBloodTimer = ZOMBIE_BLOOD_DURATION;
+      showNotification(player.id, '피 획득: 피를 밟았다 좀비속도가 이제 빨라진다!', '#E53935');
       break;
-
-    case TILE_TYPE_BOOST_STEEL:
-      // 속도 2배 + 강철꼬리 10초
-      player.boostTimer = BOOST_DURATION;       // 300프레임
-      player.steelTailTimer = STEEL_TAIL_DURATION; // 300프레임
+    }
+    case BOX_TYPE_ENERGY: {
+      // 에너지드링크: 속도 2배 + 강철꼬리 5초
+      player.boostTimer = BOOST_DURATION;
+      player.steelTailTimer = STEEL_TAIL_DURATION;
+      showNotification(player.id, '에너지드링크 획득: 속도와 강철꼬리를 갖는 에너지드링크를 마셨다!', '#FFD600');
       break;
+    }
   }
-}
-
-// 특수 타일 초기화
-function removeTileAt(r, c) {
-  specialTiles = specialTiles.filter(t => !(t.r === r && t.c === c));
 }
