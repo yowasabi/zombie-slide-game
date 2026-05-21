@@ -64,3 +64,5 @@ const COLOR_EMPTY  = '#1a1a1a';
 const COLOR_GRID   = '#222222';
 
 const FRAME_RATE = 30;
+
+const TILE_TYPE_NORMAL = 'normal';
