@@ -1,4 +1,4 @@
-// grid.js
+// grid.js — 격자판 맵 제어 및 색상 매핑
 
 let grid = [];
 
@@ -7,11 +7,11 @@ function initGrid() {
   for (let r = 0; r < ROWS; r++) {
     grid[r] = [];
     for (let c = 0; c < COLS; c++) {
-      grid[r][c] = { owner: OWNER_NONE, type: TILE_TYPE_NORMAL, dirty: true };
+      grid[r][c] = { owner: OWNER_NONE, type: TILE_TYPE_NORMAL };
     }
   }
   
-  // [필수 수정] 시작할 때 두 플레이어의 기본 스타팅 땅 할당 (아무것도 없이 시작하는 버그 해결)
+  // 1. 시작할 때 아무것도 없는 버그 해결: 디폴트 스타팅 땅 할당 (A 좌상단, B 우하단 영역)
   for (let r = 5; r < 15; r++) {
     for (let c = 5; c < 15; c++) {
       grid[r][c].owner = OWNER_TEAM;
@@ -26,10 +26,7 @@ function initGrid() {
 
 function setOwner(r, c, owner) {
   if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return;
-  if (grid[r][c].owner !== owner) {
-    grid[r][c].owner = owner;
-    grid[r][c].dirty = true;
-  }
+  grid[r][c].owner = owner;
 }
 
 function getOwner(r, c) {
@@ -37,7 +34,7 @@ function getOwner(r, c) {
   return grid[r][c].owner;
 }
 
-// 시스템 및 UI 모듈에서 가져다 쓰는 타일 색상 반환 함수
+// 스케줄러 루프 및 타일 렌더러가 참조할 색상 반환 함수
 function tileColor(owner) {
   if (owner === OWNER_TEAM) return COLOR_TEAM;
   if (owner === OWNER_A) return COLOR_A;
@@ -54,7 +51,7 @@ function drawGrid(p) {
       const y = r * TILE_SIZE;
 
       if (tile.owner) {
-        p.fill(tileColor(tile.owner) + 'B3'); 
+        p.fill(tileColor(tile.owner)); 
       } else {
         p.fill(COLOR_EMPTY);
       }
@@ -69,6 +66,7 @@ function drawGrid(p) {
   }
 }
 
+// 땅을 둘러싸서 채우는 BFS 알고리즘 영역 채우기 로직
 function fillClosedArea(owner, tailList) {
   const tailSet = new Set(tailList.map(t => `${t.r},${t.c}`));
   const visited = new Set();
@@ -114,6 +112,7 @@ function fillClosedArea(owner, tailList) {
   }
 }
 
+// 배신 시작 시 보로노이 다이어그램 기준 영역 2분할 반띵 분할
 function voronoiSplit(posA, posB) {
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
@@ -126,7 +125,7 @@ function voronoiSplit(posA, posB) {
   }
 }
 
-// 부활 시 살아남은 자의 영역의 절반을 떼어 이전해 주는 로직
+// 부활 시 살아남은 생존자의 영역 절반을 떼어주는 분할 처리 함수
 function reallocateHalfTerritory(fromId, toId) {
   let targetTiles = [];
   for (let r = 0; r < ROWS; r++) {
