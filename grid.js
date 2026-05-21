@@ -1,4 +1,4 @@
-// grid.js — 게임판 및 땅 영역 관리
+// grid.js — 땅 영역 및 소유권 알고리즘 관리
 
 let grid = [];
 
@@ -22,6 +22,15 @@ function getOwner(r, c) {
   return grid[r][c].owner;
 }
 
+// 기존 스케치 코드와 충돌을 막기 위해 색상 반환 함수 완벽 구현
+function tileColor(owner) {
+  if (owner === OWNER_TEAM) return COLOR_TEAM;
+  if (owner === OWNER_A) return COLOR_A;
+  if (owner === OWNER_B) return COLOR_B;
+  if (owner === OWNER_ZOMBIE) return COLOR_ZOMBIE;
+  return COLOR_EMPTY;
+}
+
 function drawGrid(p) {
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
@@ -29,13 +38,12 @@ function drawGrid(p) {
       const x = c * TILE_SIZE;
       const y = r * TILE_SIZE;
 
-      // 타일 채우기 색상 결정
-      if (tile.owner === OWNER_TEAM) p.fill(76, 175, 80, 180);
-      else if (tile.owner === OWNER_A) p.fill(33, 150, 243, 180);
-      else if (tile.owner === OWNER_B) p.fill(156, 39, 176, 180);
-      else if (tile.owner === OWNER_ZOMBIE) p.fill(121, 85, 72, 140);
-      else p.fill(COLOR_EMPTY);
-
+      // 영역 채우기
+      if (tile.owner) {
+        p.fill(tileColor(tile.owner) + 'B3'); // 투명도 살짝 부여
+      } else {
+        p.fill(COLOR_EMPTY);
+      }
       p.noStroke();
       p.rect(x, y, TILE_SIZE, TILE_SIZE);
 
@@ -48,13 +56,12 @@ function drawGrid(p) {
   }
 }
 
-// 안전 구역 내부 채우기 (Flood Fill 기반 기하 알고리즘)
+// 폐곡선 영역 내부 자동 채우기 알고리즘 (Flood Fill)
 function fillClosedArea(owner, tailList) {
   const tailSet = new Set(tailList.map(t => `${t.r},${t.c}`));
   const visited = new Set();
   const queue = [];
 
-  // 외곽선 경계 타일들을 큐에 삽입하여 외부 영역 탐색
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
       if (r === 0 || r === ROWS - 1 || c === 0 || c === COLS - 1) {
@@ -85,7 +92,6 @@ function fillClosedArea(owner, tailList) {
     }
   }
 
-  // 외부에 닿지 않은 빈 공간을 모두 소유지로 전환
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
       const key = `${r},${c}`;
@@ -96,7 +102,7 @@ function fillClosedArea(owner, tailList) {
   }
 }
 
-// 배신 타이머 발동 시: 기존 팀 영역을 A와 B의 거리 기준(Voronoi)으로 반반 분할
+// 배신 모드 발동 시: 위치 기준 반반 분할 (Voronoi 분할)
 function voronoiSplit(posA, posB) {
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
@@ -109,7 +115,7 @@ function voronoiSplit(posA, posB) {
   }
 }
 
-// 부활 시 땅 반감 기여 기능: 한 플레이어의 영역 수의 절반을 강제로 넘겨줌
+// 부활 시 규칙: 살아남은 플레이어 땅 영역의 딱 절반을 떼어줌
 function reallocateHalfTerritory(fromId, toId) {
   let targetTiles = [];
   for (let r = 0; r < ROWS; r++) {
@@ -119,7 +125,6 @@ function reallocateHalfTerritory(fromId, toId) {
       }
     }
   }
-  // 무작위 혹은 순차적으로 절반 선택 후 이전
   const halfCount = Math.floor(targetTiles.length / 2);
   for (let i = 0; i < halfCount; i++) {
     grid[targetTiles[i].r][targetTiles[i].c].owner = toId;
